@@ -155,9 +155,17 @@
           <input type="text" id="fReserva">
         </div>
         <div class="campo">
-          <label>Tipo de restrição *</label>
-          <select id="fTipoRestricao" required></select>
+          <label>Origem do hóspede *</label>
+          <select id="fOrigem" required></select>
         </div>
+      </div>
+      <div class="campo" id="campoOutraOrigem" style="display:none;">
+        <label>Qual origem? *</label>
+        <input type="text" id="fOrigemOutro">
+      </div>
+      <div class="campo">
+        <label>Tipo de restrição *</label>
+        <select id="fTipoRestricao" required></select>
       </div>
       <div class="campo" id="campoOutraRestricao" style="display:none;">
         <label>Qual restrição? *</label>
@@ -237,6 +245,7 @@
       <div class="kpis" id="dashKpis"></div>
       <div class="grafico-card"><h3>Restrições por tipo</h3><canvas id="chartTipo" height="90"></canvas></div>
       <div class="grafico-card"><h3>Pedidos por refeição (café / almoço / jantar)</h3><canvas id="chartRefeicao" height="90"></canvas></div>
+      <div class="grafico-card"><h3>Pedidos por origem do hóspede</h3><canvas id="chartOrigem" height="90"></canvas></div>
       <div class="grafico-card"><h3>Lançamentos por nutricionista</h3><canvas id="chartNutri" height="90"></canvas></div>
       <div class="grafico-card"><h3>Pratos mais solicitados</h3><canvas id="chartPrato" height="90"></canvas></div>
     </div>
@@ -267,6 +276,7 @@
       <div class="campo"><label>Apartamento</label><input type="text" id="eApartamento"></div>
       <div class="campo"><label>Data</label><input type="date" id="eData"></div>
     </div>
+    <div class="campo"><label>Origem do hóspede</label><input type="text" id="eOrigem"></div>
     <div class="linha-dois">
       <div class="campo"><label>Refeição</label>
         <select id="eRefeicao"><option>Café da Manhã</option><option>Almoço</option><option>Jantar</option></select>
@@ -454,12 +464,22 @@ async function prepararSolicitar() {
         opt.value = t; opt.textContent = t;
         sel.appendChild(opt);
       });
+      const selOrigem = document.getElementById('fOrigem');
+      selOrigem.innerHTML = '';
+      (meta.origens || ['Recepção', 'Central de Reservas', 'Atendimento no Salão', 'Outro']).forEach(o => {
+        const opt = document.createElement('option');
+        opt.value = o; opt.textContent = o;
+        selOrigem.appendChild(opt);
+      });
       metaCarregada = true;
     } catch (e) { /* segue com select vazio se falhar */ }
   }
 }
 document.getElementById('fTipoRestricao').addEventListener('change', e => {
   document.getElementById('campoOutraRestricao').style.display = e.target.value === 'Outro' ? 'block' : 'none';
+});
+document.getElementById('fOrigem').addEventListener('change', e => {
+  document.getElementById('campoOutraOrigem').style.display = e.target.value === 'Outro' ? 'block' : 'none';
 });
 
 document.getElementById('formSolicitar').addEventListener('submit', async (e) => {
@@ -470,6 +490,9 @@ document.getElementById('formSolicitar').addEventListener('submit', async (e) =>
   const tipoSel = document.getElementById('fTipoRestricao').value;
   const tipoFinal = tipoSel === 'Outro' ? document.getElementById('fTipoRestricaoOutro').value.trim() : tipoSel;
 
+  const origemSel = document.getElementById('fOrigem').value;
+  const origemFinal = origemSel === 'Outro' ? document.getElementById('fOrigemOutro').value.trim() : origemSel;
+
   const refeicoes = {};
   if (document.getElementById('chkCafe').checked) refeicoes['Café da Manhã'] = document.getElementById('hCafe').value;
   if (document.getElementById('chkAlmoco').checked) refeicoes['Almoço'] = document.getElementById('hAlmoco').value;
@@ -477,11 +500,13 @@ document.getElementById('formSolicitar').addEventListener('submit', async (e) =>
 
   if (Object.keys(refeicoes).length === 0) { msg.textContent = 'Selecione ao menos uma refeição.'; return; }
   if (!tipoFinal) { msg.textContent = 'Informe o tipo de restrição.'; return; }
+  if (!origemFinal) { msg.textContent = 'Informe a origem do hóspede.'; return; }
 
   const payload = {
     hospede: document.getElementById('fHospede').value.trim(),
     apartamento: document.getElementById('fApartamento').value.trim(),
     reserva: document.getElementById('fReserva').value.trim(),
+    origem: origemFinal,
     tipo_restricao: tipoFinal,
     prato: document.getElementById('fPrato').value.trim(),
     data_inicio: document.getElementById('fDataInicio').value,
@@ -498,6 +523,8 @@ document.getElementById('formSolicitar').addEventListener('submit', async (e) =>
     document.getElementById('formSolicitar').reset();
     document.getElementById('fDataInicio').value = hojeISO();
     document.getElementById('nutriResponsavel').value = currentUser.nome;
+    document.getElementById('campoOutraRestricao').style.display = 'none';
+    document.getElementById('campoOutraOrigem').style.display = 'none';
   } else {
     msg.style.color = 'var(--vermelho)';
     msg.textContent = r.error || 'Erro ao lançar pedido.';
@@ -530,12 +557,13 @@ async function carregarEntregas() {
     return;
   }
 
-  let html = '<table><thead><tr><th>Refeição</th><th>Hóspede</th><th>Apto</th><th>Restrição</th><th>Prato</th><th>Horário</th><th>Pronto</th><th>Entregue</th><th>Ações</th></tr></thead><tbody>';
+  let html = '<table><thead><tr><th>Refeição</th><th>Hóspede</th><th>Apto</th><th>Origem</th><th>Restrição</th><th>Prato</th><th>Horário</th><th>Pronto</th><th>Entregue</th><th>Ações</th></tr></thead><tbody>';
   pedidos.forEach(p => {
     html += `<tr>
       <td>${escapeHtml(p.refeicao)}</td>
       <td>${escapeHtml(p.hospede)}</td>
       <td>${escapeHtml(p.apartamento)}</td>
+      <td>${escapeHtml(p.origem || '—')}</td>
       <td>${escapeHtml(p.tipo_restricao)}</td>
       <td>${escapeHtml(p.prato)}</td>
       <td>${escapeHtml(p.horario_entrega || '—')}</td>
@@ -575,6 +603,7 @@ function abrirModalEditar(p) {
   document.getElementById('eHospede').value = p.hospede;
   document.getElementById('eApartamento').value = p.apartamento;
   document.getElementById('eData').value = p.data;
+  document.getElementById('eOrigem').value = p.origem || '';
   document.getElementById('eRefeicao').value = p.refeicao;
   document.getElementById('eHorario').value = p.horario_entrega;
   document.getElementById('eTipoRestricao').value = p.tipo_restricao;
@@ -591,6 +620,7 @@ async function salvarEdicao() {
     hospede: document.getElementById('eHospede').value.trim(),
     apartamento: document.getElementById('eApartamento').value.trim(),
     data: document.getElementById('eData').value,
+    origem: document.getElementById('eOrigem').value.trim(),
     refeicao: document.getElementById('eRefeicao').value,
     horario_entrega: document.getElementById('eHorario').value,
     tipo_restricao: document.getElementById('eTipoRestricao').value.trim(),
@@ -635,6 +665,7 @@ async function carregarDashboard() {
 
   desenharGrafico('chartTipo', 'bar', contarPor(pedidos, 'tipo_restricao'));
   desenharGrafico('chartRefeicao', 'doughnut', contarPor(pedidos, 'refeicao'));
+  desenharGrafico('chartOrigem', 'doughnut', contarPor(pedidos, 'origem'));
   desenharGrafico('chartNutri', 'bar', contarPor(pedidos, 'nutri_responsavel'));
   desenharGrafico('chartPrato', 'bar', contarPor(pedidos, 'prato', 10));
 }
